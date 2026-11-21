@@ -1,12 +1,13 @@
 from fastapi import APIRouter,Depends,HTTPException
 from src.config.database import db
-from src.models.entities import User,Subscription,Receipt,Audit
-from src.schemas.business import Login,ArrivalInput,SubscriptionInput,PreviewInput,ReviewInput
+from src.models.entities import User,Subscription,Receipt,Audit,LoadBatch,CargoLot,OutboundOption
+from src.schemas.business import Login,ArrivalInput,SubscriptionInput,PreviewInput,ReviewInput,LoadBatchInput
 from src.middlewares.auth import current,editor,admin
 from src.utils.security import verify,token
 from src.utils.time import now_utc,yesterday,SH
 from src.services.business import audit,dump
-from src.services.repository import arrival_rows,save_arrival,save_subscription,get_receipt
+from src.services.repository import arrival_rows,save_arrival,save_subscription,get_receipt,save_load_batch,get_load_batch
+from src.services.loadplan import summary_view
 from src.services.digest import calculate
 from src.controllers.business import export_receipt
 router=APIRouter()
@@ -48,5 +49,25 @@ def review(i:int,data:ReviewInput,u=Depends(admin),s=Depends(db)):
  r=get_receipt(s,i)
  if r.state=='reviewed':raise HTTPException(409,'回执已复核，不覆盖原复核意见')
  r.state='reviewed';r.review_note=data.note;s.commit();audit(s,u,'复核晨报回执 '+str(i));return dump(r)
+@router.get('/load-batches')
+def load_batches(u=Depends(current),s=Depends(db)):return [summary_view(r) for r in s.query(LoadBatch).order_by(LoadBatch.business_day.desc(),LoadBatch.id.desc()).all()]
+@router.get('/load-batches/{i}')
+def load_batch(i:int,u=Depends(current),s=Depends(db)):
+ r=get_load_batch(s,i);d=dump(r)
+ d['lots']=[dump(x) for x in s.query(CargoLot).filter_by(batch_id=r.id).all()]
+ d['options']=[dump(x) for x in s.query(OutboundOption).filter_by(batch_id=r.id).all()]
+ return d
+@router.post('/load-batches')
+def create_load_batch(data:LoadBatchInput,u=Depends(editor),s=Depends(db)):
+ r=save_load_batch(s,data,u);audit(s,u,'发起接驳配载批次 '+r.station+'/'+r.business_day);return dump(r)
+@router.put('/load-batches/{i}')
+def edit_load_batch(i:int,data:LoadBatchInput,u=Depends(editor),s=Depends(db)):
+ r=save_load_batch(s,data,u,i);audit(s,u,'修订接驳配载批次 '+str(i));return dump(r)
+@router.post('/load-batches/{i}/recompute')
+def recompute_load_batch(i:int,u=Depends(editor),s=Depends(db)):
+ r=s.query(LoadBatch).filter_by(id=i).with_for_update().first()
+ if not r:raise HTTPException(404,'配载批次不存在')
+ if r.state=='loaded':raise HTTPException(409,'批次已入箱，配载方案随晨报回执冻结')
+ r.state='pending';r.stale_note='手动发起重算';s.commit();audit(s,u,'手动重算配载批次 '+str(i));return dump(r)
 @router.get('/audits')
 def audits(u=Depends(admin),s=Depends(db)):return [dump(r) for r in s.query(Audit).order_by(Audit.id.desc()).limit(100)]

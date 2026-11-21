@@ -13,6 +13,16 @@ class Receipt(Base):
  __tablename__='receipts'
  __table_args__=(UniqueConstraint('subscription_id','report_day',name='uq_receipt_subscription_day'),)
  id=Column(Integer,primary_key=True);subscription_id=Column(Integer,ForeignKey('subscriptions.id'));report_day=Column(String(10));recipient=Column(String(80));created_at=Column(String(40));state=Column(String(20),default='delivered');payload=Column(JSON);review_note=Column(Text,default='')
+class LoadBatch(Base):
+ __tablename__='load_batches'
+ __table_args__=(UniqueConstraint('station','business_day',name='uq_loadbatch_station_day'),)
+ id=Column(Integer,primary_key=True);station=Column(String(30));business_day=Column(String(10));state=Column(String(20),default='pending');plan=Column(JSON,nullable=True);fingerprint=Column(String(64),nullable=True);history=Column(JSON,default=list);revision=Column(Integer,default=0);stale_note=Column(Text,default='');receipt_id=Column(Integer,ForeignKey('receipts.id'),nullable=True);created_by=Column(String(100));created_at=Column(String(40));computed_at=Column(String(40),nullable=True);loaded_at=Column(String(40),nullable=True)
+class CargoLot(Base):
+ __tablename__='cargo_lots'
+ id=Column(Integer,primary_key=True);batch_id=Column(Integer,ForeignKey('load_batches.id'));code=Column(String(60));volume=Column(Float);note=Column(Text,default='')
+class OutboundOption(Base):
+ __tablename__='outbound_options'
+ id=Column(Integer,primary_key=True);batch_id=Column(Integer,ForeignKey('load_batches.id'));code=Column(String(60));capacity=Column(Float);min_transfer=Column(Integer)
 class Audit(Base):
  __tablename__='audits'
  id=Column(Integer,primary_key=True);actor=Column(String(100));action=Column(String(200));created=Column(String(40))

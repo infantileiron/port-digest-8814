@@ -38,3 +38,22 @@ class PreviewInput(BaseModel):
  report_day:date
  station:Literal['全部','北站','南站','东港']='全部'
 class ReviewInput(BaseModel):note:str=Field(min_length=5,max_length=2000)
+class CargoLotInput(BaseModel):
+ code:str=Field(min_length=1,max_length=60)
+ volume:float=Field(gt=0,le=100000)
+ note:str=Field(default='',max_length=500)
+class OutboundOptionInput(BaseModel):
+ code:str=Field(min_length=1,max_length=60)
+ capacity:float=Field(gt=0,le=100000)
+ min_transfer:int=Field(ge=0,le=1440)
+class LoadBatchInput(BaseModel):
+ station:Literal['北站','南站','东港']
+ business_day:date
+ lots:list[CargoLotInput]=Field(min_length=1,max_length=50)
+ options:list[OutboundOptionInput]=Field(min_length=1,max_length=20)
+ @field_validator('options')
+ @classmethod
+ def unique_options(cls,v):
+  codes=[o.code for o in v]
+  if len(codes)!=len(set(codes)):raise ValueError('出港候选班次不能重复')
+  return v
